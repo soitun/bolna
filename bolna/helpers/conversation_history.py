@@ -34,11 +34,13 @@ class ConversationHistory:
         self._messages.append(msg)
 
     def append_tool_result(self, tool_call_id: str, content: str):
-        self._messages.append({
-            "role": ChatRole.TOOL,
-            "tool_call_id": tool_call_id,
-            "content": content,
-        })
+        self._messages.append(
+            {
+                "role": ChatRole.TOOL,
+                "tool_call_id": tool_call_id,
+                "content": content,
+            }
+        )
 
     def attach_tool_calls_to_last_response(self, tool_calls: list):
         if self._messages and self._messages[-1].get("role") == ChatRole.ASSISTANT:

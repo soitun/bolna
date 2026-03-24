@@ -15,8 +15,20 @@ load_dotenv()
 
 
 class PollySynthesizer(BaseSynthesizer):
-    def __init__(self, voice, language, audio_format="pcm", sampling_rate=8000, stream=False, engine="neural",
-                 buffer_size=400, speaking_rate = "100%", volume = "0dB", caching= True, **kwargs):
+    def __init__(
+        self,
+        voice,
+        language,
+        audio_format="pcm",
+        sampling_rate=8000,
+        stream=False,
+        engine="neural",
+        buffer_size=400,
+        speaking_rate="100%",
+        volume="0dB",
+        caching=True,
+        **kwargs,
+    ):
         super().__init__(kwargs.get("task_manager_instance", None), stream, buffer_size)
         self.engine = engine
         self.format = self.get_format(audio_format.lower())
@@ -34,12 +46,12 @@ class PollySynthesizer(BaseSynthesizer):
 
     def get_synthesized_characters(self):
         return self.synthesized_characters
-    
+
     def get_engine(self):
         return self.engine
 
     def resolve_voice(self, text):
-        return ''.join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c))
+        return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
 
     def supports_websocket(self):
         return False
@@ -52,13 +64,15 @@ class PollySynthesizer(BaseSynthesizer):
 
     @staticmethod
     async def create_client(service: str, session: AioSession, exit_stack: AsyncExitStack):
-        if os.getenv('AWS_ACCESS_KEY_ID'):
-            return await exit_stack.enter_async_context(session.create_client(
-                service,
-                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                region_name=os.getenv('AWS_REGION')
-            ))
+        if os.getenv("AWS_ACCESS_KEY_ID"):
+            return await exit_stack.enter_async_context(
+                session.create_client(
+                    service,
+                    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                    region_name=os.getenv("AWS_REGION"),
+                )
+            )
         else:
             return await exit_stack.enter_async_context(session.create_client(service))
 
@@ -68,10 +82,10 @@ class PollySynthesizer(BaseSynthesizer):
             polly = await self.create_client("polly", session, exit_stack)
             logger.info(f"Generating TTS response for text: {text}, SampleRate {self.sample_rate} format {self.format}")
             # input = f"""
-            # <speak> 
-            #     <amazon:auto-breaths volume= "x-loud" frequency="x-high" duration="x-long"> 
-            #         <prosody volume="{self.volume}" rate="{self.speaking_rate}"> {text} 
-            #         </prosody> 
+            # <speak>
+            #     <amazon:auto-breaths volume= "x-loud" frequency="x-high" duration="x-long">
+            #         <prosody volume="{self.volume}" rate="{self.speaking_rate}"> {text}
+            #         </prosody>
             #     </amazon:auto-breaths>
             # </speak>
             # """
@@ -83,7 +97,7 @@ class PollySynthesizer(BaseSynthesizer):
                     OutputFormat=self.format,
                     VoiceId=self.voice,
                     LanguageCode=self.language,
-                    SampleRate=self.sample_rate
+                    SampleRate=self.sample_rate,
                 )
             except (BotoCoreError, ClientError) as error:
                 logger.error(error)
@@ -110,8 +124,10 @@ class PollySynthesizer(BaseSynthesizer):
             logger.info(f"Generating TTS response for message: {message}")
             meta_info, text = message.get("meta_info"), message.get("data")
 
-            if not self.should_synthesize_response(meta_info.get('sequence_id')):
-                logger.info(f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager.")
+            if not self.should_synthesize_response(meta_info.get("sequence_id")):
+                logger.info(
+                    f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager."
+                )
                 return
 
             if self.caching:
@@ -138,8 +154,8 @@ class PollySynthesizer(BaseSynthesizer):
             if "end_of_llm_stream" in meta_info and meta_info["end_of_llm_stream"]:
                 meta_info["end_of_synthesizer_stream"] = True
                 self.first_chunk_generated = False
-            meta_info['text'] = text
-            meta_info['format'] = 'wav'
+            meta_info["text"] = text
+            meta_info["format"] = "wav"
             meta_info["text_synthesized"] = f"{text} "
             meta_info["mark_id"] = str(uuid.uuid4())
             yield create_ws_data_packet(message, meta_info)

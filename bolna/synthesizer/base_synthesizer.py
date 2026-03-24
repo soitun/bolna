@@ -32,7 +32,7 @@ class BaseSynthesizer:
 
     def push(self, text):
         pass
-    
+
     def synthesize(self, text):
         pass
 
@@ -64,7 +64,7 @@ class BaseSynthesizer:
             yield buffer.strip() + " "
 
     def normalize_text(self, s):
-        return re.sub(r'\s+', ' ', s.strip())
+        return re.sub(r"\s+", " ", s.strip())
 
     def resample(self, audio_bytes):
         audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
@@ -79,6 +79,6 @@ class BaseSynthesizer:
 
     def supports_websocket(self):
         return True
-    
+
     def get_sleep_time(self):
         return 0.2

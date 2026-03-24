@@ -70,7 +70,7 @@ class OpenAICompatibleLLM(BaseLLM):
             _, input_items = MessageFormatAdapter.chat_to_responses_input(messages)
             return instructions, input_items
 
-        new_messages = messages[last_assistant_idx + 1:]
+        new_messages = messages[last_assistant_idx + 1 :]
         _, input_items = MessageFormatAdapter.chat_to_responses_input(new_messages)
         return instructions, input_items
 
@@ -103,7 +103,9 @@ class OpenAICompatibleLLM(BaseLLM):
     # Streaming
     # ------------------------------------------------------------------
 
-    async def _generate_stream_responses(self, messages, synthesize=True, request_json=False, meta_info=None, tool_choice=None):
+    async def _generate_stream_responses(
+        self, messages, synthesize=True, request_json=False, meta_info=None, tool_choice=None
+    ):
         if not messages:
             raise ValueError("No messages provided")
 
@@ -164,7 +166,9 @@ class OpenAICompatibleLLM(BaseLLM):
             if self.previous_response_id and self._is_stale_response_error(e):
                 logger.warning(f"Stale previous_response_id, retrying with full history: {e}")
                 self.previous_response_id = None
-                async for chunk in self._generate_stream_responses(messages, synthesize, request_json, meta_info, tool_choice):
+                async for chunk in self._generate_stream_responses(
+                    messages, synthesize, request_json, meta_info, tool_choice
+                ):
                     yield chunk
                 return
             logger.error(f"Responses API error: {e}")
@@ -175,24 +179,24 @@ class OpenAICompatibleLLM(BaseLLM):
 
             if event.type == ResponseStreamEvent.CREATED:
                 self.previous_response_id = event.response.id
-                service_tier = getattr(event.response, 'service_tier', None)
+                service_tier = getattr(event.response, "service_tier", None)
                 continue
 
             if event.type == ResponseStreamEvent.FAILED:
-                error_info = getattr(event.response, 'error', None) or getattr(event.response, 'last_error', None)
+                error_info = getattr(event.response, "error", None) or getattr(event.response, "last_error", None)
                 logger.error(f"Responses API stream failed: {error_info}")
                 self.previous_response_id = None
-                raise APIError(
-                    message=f"Response failed: {error_info}",
-                    request=None, body=None
-                )
+                raise APIError(message=f"Response failed: {error_info}", request=None, body=None)
 
             if event.type == ResponseStreamEvent.INCOMPLETE:
                 logger.warning("Responses API stream incomplete, partial response returned")
                 self.previous_response_id = None
                 break
 
-            if not first_token_time and event.type in (ResponseStreamEvent.OUTPUT_TEXT_DELTA, ResponseStreamEvent.FUNCTION_CALL_ARGS_DELTA):
+            if not first_token_time and event.type in (
+                ResponseStreamEvent.OUTPUT_TEXT_DELTA,
+                ResponseStreamEvent.FUNCTION_CALL_ARGS_DELTA,
+            ):
                 first_token_time = now
                 self.started_streaming = True
                 latency_data = LatencyData(
@@ -224,20 +228,28 @@ class OpenAICompatibleLLM(BaseLLM):
 
                     if not gave_pre_call_msg and not received_textual and self.trigger_function_call:
                         gave_pre_call_msg = True
-                        api_tool_pre_call_message = self.api_params.get(item.name, {}).get('pre_call_message', None)
-                        detected_lang = meta_info.get('detected_language') if meta_info else None
+                        api_tool_pre_call_message = self.api_params.get(item.name, {}).get("pre_call_message", None)
+                        detected_lang = meta_info.get("detected_language") if meta_info else None
                         active_language = detected_lang or self.language
-                        pre_msg = compute_function_pre_call_message(active_language, item.name, api_tool_pre_call_message)
+                        pre_msg = compute_function_pre_call_message(
+                            active_language, item.name, api_tool_pre_call_message
+                        )
                         if pre_msg:
-                            yield LLMStreamChunk(data=pre_msg, end_of_stream=True, latency=latency_data, function_name=item.name, function_message=api_tool_pre_call_message)
+                            yield LLMStreamChunk(
+                                data=pre_msg,
+                                end_of_stream=True,
+                                latency=latency_data,
+                                function_name=item.name,
+                                function_message=api_tool_pre_call_message,
+                            )
 
             elif event.type == ResponseStreamEvent.FUNCTION_CALL_ARGS_DELTA:
                 func_call_args[event.item_id] = func_call_args.get(event.item_id, "") + event.delta
 
             elif event.type == ResponseStreamEvent.COMPLETED:
-                if hasattr(event.response, 'id'):
+                if hasattr(event.response, "id"):
                     self.previous_response_id = event.response.id
-                service_tier = service_tier or getattr(event.response, 'service_tier', None)
+                service_tier = service_tier or getattr(event.response, "service_tier", None)
                 break
 
         if latency_data:
@@ -255,22 +267,24 @@ class OpenAICompatibleLLM(BaseLLM):
                 func_conf = self.api_params[func_name]
                 logger.info(f"Payload to send {arguments_str} func_dict {func_conf}")
 
-                method = func_conf.get('method')
+                method = func_conf.get("method")
                 api_call_payload = FunctionCallPayload(
-                    url=func_conf.get('url'),
+                    url=func_conf.get("url"),
                     method=method.lower() if method else None,
-                    param=func_conf.get('param'),
-                    api_token=func_conf.get('api_token'),
-                    headers=func_conf.get('headers'),
+                    param=func_conf.get("param"),
+                    api_token=func_conf.get("api_token"),
+                    headers=func_conf.get("headers"),
                     model_args=create_kwargs,
                     meta_info=meta_info,
                     called_fun=func_name,
-                    model_response=[{
-                        "index": 0,
-                        "id": call_id,
-                        "function": {"name": func_name, "arguments": arguments_str},
-                        "type": "function",
-                    }],
+                    model_response=[
+                        {
+                            "index": 0,
+                            "id": call_id,
+                            "function": {"name": func_name, "arguments": arguments_str},
+                            "type": "function",
+                        }
+                    ],
                     tool_call_id=call_id,
                     textual_response=answer.strip() if received_textual else None,
                 )
@@ -281,8 +295,15 @@ class OpenAICompatibleLLM(BaseLLM):
                         parsed_args = json.loads(arguments_str)
                         required_keys = tool_spec.get("parameters", {}).get("required", [])
                         if tool_spec.get("parameters") is not None and all(k in parsed_args for k in required_keys):
-                            convert_to_request_log(arguments_str, meta_info, self.model, LogComponent.LLM,
-                                                   direction=LogDirection.RESPONSE, is_cached=False, run_id=self.run_id)
+                            convert_to_request_log(
+                                arguments_str,
+                                meta_info,
+                                self.model,
+                                LogComponent.LLM,
+                                direction=LogDirection.RESPONSE,
+                                is_cached=False,
+                                run_id=self.run_id,
+                            )
                             for k, v in parsed_args.items():
                                 setattr(api_call_payload, k, v)
                         else:
@@ -293,7 +314,9 @@ class OpenAICompatibleLLM(BaseLLM):
                 else:
                     api_call_payload.resp = None
 
-                yield LLMStreamChunk(data=api_call_payload, end_of_stream=False, latency=latency_data, is_function_call=True)
+                yield LLMStreamChunk(
+                    data=api_call_payload, end_of_stream=False, latency=latency_data, is_function_call=True
+                )
 
         if synthesize:
             yield LLMStreamChunk(data=buffer, end_of_stream=True, latency=latency_data)
@@ -347,7 +370,7 @@ class OpenAICompatibleLLM(BaseLLM):
             if ret_metadata:
                 metadata = {
                     "llm_host": llm_host,
-                    "service_tier": getattr(response, 'service_tier', None),
+                    "service_tier": getattr(response, "service_tier", None),
                 }
                 return res, metadata
             return res

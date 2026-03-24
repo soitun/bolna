@@ -17,7 +17,7 @@ class GeminiLLM(BaseLLM):
         """Gemini Protos don't support additionalProperties."""
         if not isinstance(schema, dict):
             return schema
-        cleaned = {k: v for k, v in schema.items() if k != 'additionalProperties'}
+        cleaned = {k: v for k, v in schema.items() if k != "additionalProperties"}
         for k, v in cleaned.items():
             if isinstance(v, dict):
                 cleaned[k] = self._clean_schema(v)
@@ -33,14 +33,14 @@ class GeminiLLM(BaseLLM):
         if "/" in model:
             self.model = model.split("/")[-1]
         if self.model.startswith("models/"):
-            self.model = self.model[len("models/"):]
+            self.model = self.model[len("models/") :]
 
         self.temperature = temperature
-        api_key = kwargs.get('llm_key', os.getenv('GOOGLE_API_KEY'))
+        api_key = kwargs.get("llm_key", os.getenv("GOOGLE_API_KEY"))
         self.client = genai.Client(api_key=api_key)
 
-        self.api_params = kwargs.get("api_tools", {}).get('tools_params', {})
-        bolna_tools = kwargs.get("api_tools", {}).get('tools', [])
+        self.api_params = kwargs.get("api_tools", {}).get("tools_params", {})
+        bolna_tools = kwargs.get("api_tools", {}).get("tools", [])
 
         gemini_declarations = []
         if bolna_tools:
@@ -52,19 +52,23 @@ class GeminiLLM(BaseLLM):
                     bolna_tools = []
 
             for tool in bolna_tools:
-                if tool.get('type') == 'function':
-                    func = tool['function']
-                    gemini_declarations.append(types.FunctionDeclaration(
-                        name=func['name'],
-                        description=func['description'],
-                        parameters=self._clean_schema(func['parameters'])
-                    ))
-                elif 'name' in tool and 'parameters' in tool:
-                    gemini_declarations.append(types.FunctionDeclaration(
-                        name=tool['name'],
-                        description=tool.get('description', ''),
-                        parameters=self._clean_schema(tool['parameters'])
-                    ))
+                if tool.get("type") == "function":
+                    func = tool["function"]
+                    gemini_declarations.append(
+                        types.FunctionDeclaration(
+                            name=func["name"],
+                            description=func["description"],
+                            parameters=self._clean_schema(func["parameters"]),
+                        )
+                    )
+                elif "name" in tool and "parameters" in tool:
+                    gemini_declarations.append(
+                        types.FunctionDeclaration(
+                            name=tool["name"],
+                            description=tool.get("description", ""),
+                            parameters=self._clean_schema(tool["parameters"]),
+                        )
+                    )
 
         self.gemini_tools = [types.Tool(function_declarations=gemini_declarations)] if gemini_declarations else None
         # Keep raw bolna tools list for required-param validation at call time
@@ -79,11 +83,11 @@ class GeminiLLM(BaseLLM):
         history = []
 
         for msg in messages:
-            role = msg['role']
-            content = msg.get('content')
-            tool_calls = msg.get('tool_calls')
+            role = msg["role"]
+            content = msg.get("content")
+            tool_calls = msg.get("tool_calls")
 
-            if role == 'system':
+            if role == "system":
                 system_instruction = content
                 continue
 
@@ -93,24 +97,22 @@ class GeminiLLM(BaseLLM):
 
             if tool_calls:
                 for tc in tool_calls:
-                    if tc.get('type') == 'function':
-                        fn = tc['function']
-                        args = json.loads(fn['arguments']) if isinstance(fn['arguments'], str) else fn['arguments']
-                        parts.append(types.Part(
-                            function_call=types.FunctionCall(name=fn['name'], args=args)
-                        ))
+                    if tc.get("type") == "function":
+                        fn = tc["function"]
+                        args = json.loads(fn["arguments"]) if isinstance(fn["arguments"], str) else fn["arguments"]
+                        parts.append(types.Part(function_call=types.FunctionCall(name=fn["name"], args=args)))
 
-            if role == 'assistant':
+            if role == "assistant":
                 if parts:
                     history.append(types.Content(role="model", parts=parts))
-            elif role == 'user':
+            elif role == "user":
                 if parts:
                     history.append(types.Content(role="user", parts=parts))
-            elif role == 'tool':
-                tool_name = msg.get('name')
+            elif role == "tool":
+                tool_name = msg.get("name")
                 if not tool_name:
                     # Recover tool name from the preceding model turn's function_call part
-                    if history and history[-1].role == 'model':
+                    if history and history[-1].role == "model":
                         for p in history[-1].parts:
                             if p.function_call:
                                 tool_name = p.function_call.name
@@ -124,17 +126,16 @@ class GeminiLLM(BaseLLM):
                     except Exception:
                         resp_obj = {"result": content}
 
-                    history.append(types.Content(
-                        role="user",
-                        parts=[types.Part(
-                            function_response=types.FunctionResponse(name=tool_name, response=resp_obj)
-                        )]
-                    ))
+                    history.append(
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part(function_response=types.FunctionResponse(name=tool_name, response=resp_obj))
+                            ],
+                        )
+                    )
                 else:
-                    history.append(types.Content(
-                        role="user",
-                        parts=[types.Part(text=f"Tool result: {content}")]
-                    ))
+                    history.append(types.Content(role="user", parts=[types.Part(text=f"Tool result: {content}")]))
 
         return system_instruction, history
 
@@ -153,7 +154,9 @@ class GeminiLLM(BaseLLM):
             config.automatic_function_calling = types.AutomaticFunctionCallingConfig(disable=True)
         return config
 
-    async def generate_stream(self, messages, synthesize=True, meta_info=None, tool_choice=None) -> AsyncIterable[LLMStreamChunk]:
+    async def generate_stream(
+        self, messages, synthesize=True, meta_info=None, tool_choice=None
+    ) -> AsyncIterable[LLMStreamChunk]:
         system_instruction, history = self._prepare_history(messages)
         config = self._build_config(system_instruction)
 
@@ -191,50 +194,79 @@ class GeminiLLM(BaseLLM):
                             call_id = part.function_call.id or ("call_" + str(uuid.uuid4())[:8])
 
                             if not self.gave_out_prefunction_call_message:
-                                pre_msg_config = self.api_params.get(fn_name, {}).get('pre_call_message')
-                                active_lang = meta_info.get('detected_language', self.language) if meta_info else self.language
+                                pre_msg_config = self.api_params.get(fn_name, {}).get("pre_call_message")
+                                active_lang = (
+                                    meta_info.get("detected_language", self.language) if meta_info else self.language
+                                )
                                 pre_msg = compute_function_pre_call_message(active_lang, fn_name, pre_msg_config)
-                                yield LLMStreamChunk(data=pre_msg, end_of_stream=True, latency=latency_data, function_name=fn_name, function_message=pre_msg_config)
+                                yield LLMStreamChunk(
+                                    data=pre_msg,
+                                    end_of_stream=True,
+                                    latency=latency_data,
+                                    function_name=fn_name,
+                                    function_message=pre_msg_config,
+                                )
                                 self.gave_out_prefunction_call_message = True
 
                             func_conf = self.api_params.get(fn_name, {})
 
                             # Validate required params against tool spec (mirrors ToolCallAccumulator)
                             tool_spec = next(
-                                (t for t in self.bolna_tools_raw
-                                 if (t.get('type') == 'function' and t['function']['name'] == fn_name)
-                                 or (t.get('name') == fn_name)),
-                                None
+                                (
+                                    t
+                                    for t in self.bolna_tools_raw
+                                    if (t.get("type") == "function" and t["function"]["name"] == fn_name)
+                                    or (t.get("name") == fn_name)
+                                ),
+                                None,
                             )
                             if tool_spec:
                                 params_schema = (
-                                    tool_spec['function']['parameters']
-                                    if tool_spec.get('type') == 'function'
-                                    else tool_spec.get('parameters', {})
+                                    tool_spec["function"]["parameters"]
+                                    if tool_spec.get("type") == "function"
+                                    else tool_spec.get("parameters", {})
                                 )
-                                required_keys = params_schema.get('required', [])
+                                required_keys = params_schema.get("required", [])
                                 if not all(k in fn_args for k in required_keys):
-                                    logger.warning(f"Gemini tool call {fn_name} missing required params: {required_keys}, got: {list(fn_args.keys())}")
+                                    logger.warning(
+                                        f"Gemini tool call {fn_name} missing required params: {required_keys}, got: {list(fn_args.keys())}"
+                                    )
                                     continue
 
                             payload = FunctionCallPayload(
-                                url=func_conf.get('url'),
-                                method=(func_conf.get('method', 'GET') or 'GET').lower(),
-                                param=func_conf.get('param'),
-                                api_token=func_conf.get('api_token'),
-                                headers=func_conf.get('headers'),
+                                url=func_conf.get("url"),
+                                method=(func_conf.get("method", "GET") or "GET").lower(),
+                                param=func_conf.get("param"),
+                                api_token=func_conf.get("api_token"),
+                                headers=func_conf.get("headers"),
                                 model_args={"model": self.model},
                                 meta_info=meta_info or {},
                                 called_fun=fn_name,
-                                model_response=[{"id": call_id, "function": {"name": fn_name, "arguments": json.dumps(fn_args)}, "type": "function"}],
+                                model_response=[
+                                    {
+                                        "id": call_id,
+                                        "function": {"name": fn_name, "arguments": json.dumps(fn_args)},
+                                        "type": "function",
+                                    }
+                                ],
                                 tool_call_id=call_id,
-                                textual_response=answer.strip() if answer else None
+                                textual_response=answer.strip() if answer else None,
                             )
                             for k, v in fn_args.items():
                                 setattr(payload, k, v)
 
-                            convert_to_request_log(json.dumps(fn_args), meta_info, self.model, "llm", direction="response", is_cached=False, run_id=self.run_id)
-                            yield LLMStreamChunk(data=payload, end_of_stream=False, latency=latency_data, is_function_call=True)
+                            convert_to_request_log(
+                                json.dumps(fn_args),
+                                meta_info,
+                                self.model,
+                                "llm",
+                                direction="response",
+                                is_cached=False,
+                                run_id=self.run_id,
+                            )
+                            yield LLMStreamChunk(
+                                data=payload, end_of_stream=False, latency=latency_data, is_function_call=True
+                            )
                             continue
 
                 # Regular text streaming

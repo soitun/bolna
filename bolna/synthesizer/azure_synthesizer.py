@@ -16,7 +16,18 @@ load_dotenv()
 
 
 class AzureSynthesizer(BaseSynthesizer):
-    def __init__(self, voice, language, model="neural", stream=False, sampling_rate=8000, buffer_size=150, caching=True, speed=None, **kwargs):
+    def __init__(
+        self,
+        voice,
+        language,
+        model="neural",
+        stream=False,
+        sampling_rate=8000,
+        buffer_size=150,
+        caching=True,
+        speed=None,
+        **kwargs,
+    ):
         super().__init__(kwargs.get("task_manager_instance", None), stream, buffer_size)
         self.model = model
         self.language = language
@@ -43,8 +54,8 @@ class AzureSynthesizer(BaseSynthesizer):
         self.latency_stats = {
             "request_count": 0,
             "total_first_byte_latency": 0,
-            "min_latency": float('inf'),
-            "max_latency": 0.0
+            "min_latency": float("inf"),
+            "max_latency": 0.0,
         }
         self.connection_requested_at = None
 
@@ -60,7 +71,7 @@ class AzureSynthesizer(BaseSynthesizer):
 
     def supports_websocket(self):
         return False
-    
+
     def get_sleep_time(self):
         return 0.01
 
@@ -87,7 +98,6 @@ class AzureSynthesizer(BaseSynthesizer):
           </voice>
         </speak>'''
 
-
     async def __generate_http(self, text):
         synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config, audio_config=None)
         ssml = self._build_ssml(text)
@@ -109,9 +119,13 @@ class AzureSynthesizer(BaseSynthesizer):
                 # Check specific error codes using SDK enums
                 if error_code == CancellationErrorCode.AuthenticationFailure:
                     logger.error(f"Azure TTS authentication failed: Invalid subscription key - Region: {self.region}")
-                    raise Exception(f"Azure TTS authentication failed: Invalid subscription key. Details: {error_details}")
+                    raise Exception(
+                        f"Azure TTS authentication failed: Invalid subscription key. Details: {error_details}"
+                    )
                 elif error_code == CancellationErrorCode.Forbidden:
-                    logger.error(f"Azure TTS forbidden: Insufficient permissions or invalid region - Region: {self.region}")
+                    logger.error(
+                        f"Azure TTS forbidden: Insufficient permissions or invalid region - Region: {self.region}"
+                    )
                     raise Exception(f"Azure TTS forbidden: Insufficient permissions. Details: {error_details}")
                 elif error_code == CancellationErrorCode.BadRequest:
                     logger.error(f"Azure TTS bad request: Invalid configuration - Region: {self.region}")
@@ -134,28 +148,30 @@ class AzureSynthesizer(BaseSynthesizer):
                 logger.info(f"Generating TTS response for message: {message}")
                 meta_info, text = message.get("meta_info"), message.get("data")
 
-                if not self.should_synthesize_response(meta_info.get('sequence_id')):
-                    logger.info(f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager.")
+                if not self.should_synthesize_response(meta_info.get("sequence_id")):
+                    logger.info(
+                        f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager."
+                    )
                     return
 
                 # Check cache if enabled
                 if self.caching and self.cache.get(text):
                     logger.info(f"Cache hit and hence returning quickly {text}")
                     audio_data = self.cache.get(text)
-                    
+
                     # Set metadata and yield the cached audio
                     if not self.first_chunk_generated:
                         meta_info["is_first_chunk"] = True
                         self.first_chunk_generated = True
                     else:
                         meta_info["is_first_chunk"] = False
-                        
+
                     if "end_of_llm_stream" in meta_info and meta_info["end_of_llm_stream"]:
                         meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
-                    
-                    meta_info['text'] = text
-                    meta_info['format'] = 'wav'
+
+                    meta_info["text"] = text
+                    meta_info["format"] = "wav"
                     meta_info["text_synthesized"] = f"{text} "
                     meta_info["mark_id"] = str(uuid.uuid4())
                     yield create_ws_data_packet(audio_data, meta_info)
@@ -182,15 +198,13 @@ class AzureSynthesizer(BaseSynthesizer):
                             self.connection_time = round((time.perf_counter() - start_time) * 1000)
 
                         # Use run_coroutine_threadsafe to safely put data from another thread
-                        asyncio.run_coroutine_threadsafe(
-                            chunk_queue.put(evt.result.audio_data),
-                            self.loop
-                        )
+                        asyncio.run_coroutine_threadsafe(chunk_queue.put(evt.result.audio_data), self.loop)
                     except Exception as e:
                         logger.error(f"Error in synthesizing handler: {e}")
 
                 def speech_synthesizer_completed_handler(evt):
                     nonlocal synthesis_error
+
                     async def set_done_event():
                         done_event.set()
 
@@ -205,7 +219,9 @@ class AzureSynthesizer(BaseSynthesizer):
 
                             # Check specific error codes using SDK enums
                             if error_code == CancellationErrorCode.AuthenticationFailure:
-                                logger.error(f"Azure TTS authentication failed: Invalid subscription key - Region: {self.region}")
+                                logger.error(
+                                    f"Azure TTS authentication failed: Invalid subscription key - Region: {self.region}"
+                                )
                             elif error_code == CancellationErrorCode.Forbidden:
                                 logger.error(f"Azure TTS forbidden: Insufficient permissions - Region: {self.region}")
                             elif error_code == CancellationErrorCode.BadRequest:
@@ -220,7 +236,7 @@ class AzureSynthesizer(BaseSynthesizer):
 
                 # Stamp synthesizer turn start time
                 try:
-                    meta_info['synthesizer_start_time'] = time.perf_counter()
+                    meta_info["synthesizer_start_time"] = time.perf_counter()
                 except Exception:
                     pass
 
@@ -237,17 +253,17 @@ class AzureSynthesizer(BaseSynthesizer):
                     continue
                 logger.info(f"Azure TTS request sent for {len(text)} chars")
                 full_audio = bytearray()
-                
+
                 # Process chunks as they arrive
                 while not done_event.is_set() or not chunk_queue.empty():
                     try:
                         # Get available chunk or wait briefly
                         chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.01)
-                        
+
                         # Collect full audio for caching if enabled
                         if self.caching:
                             full_audio.extend(chunk)
-                        
+
                         # Log first chunk latency
                         if not self.first_chunk_generated:
                             first_chunk_time = round((time.perf_counter() - start_time) * 1000)
@@ -257,9 +273,11 @@ class AzureSynthesizer(BaseSynthesizer):
                             self.latency_stats["max_latency"] = max(self.latency_stats["max_latency"], first_chunk_time)
                             # Expose first-result latency via meta_info
                             try:
-                                if 'synthesizer_first_result_latency' not in meta_info:
-                                    meta_info['synthesizer_first_result_latency'] = (time.perf_counter() - meta_info.get('synthesizer_start_time', start_time))
-                                    meta_info['synthesizer_latency'] = meta_info['synthesizer_first_result_latency']
+                                if "synthesizer_first_result_latency" not in meta_info:
+                                    meta_info["synthesizer_first_result_latency"] = time.perf_counter() - meta_info.get(
+                                        "synthesizer_start_time", start_time
+                                    )
+                                    meta_info["synthesizer_latency"] = meta_info["synthesizer_first_result_latency"]
                             except Exception:
                                 pass
 
@@ -269,32 +287,34 @@ class AzureSynthesizer(BaseSynthesizer):
                             self.first_chunk_generated = True
                         else:
                             meta_info["is_first_chunk"] = False
-                        
+
                         # Track if this is the end
                         if done_event.is_set() and chunk_queue.empty():
                             if "end_of_llm_stream" in meta_info and meta_info["end_of_llm_stream"]:
                                 meta_info["end_of_synthesizer_stream"] = True
                                 self.first_chunk_generated = False
-                        
-                        meta_info['text'] = text
-                        meta_info['format'] = 'wav'
+
+                        meta_info["text"] = text
+                        meta_info["format"] = "wav"
                         meta_info["text_synthesized"] = f"{text} "
                         meta_info["mark_id"] = str(uuid.uuid4())
                         yield create_ws_data_packet(chunk, meta_info)
-                        
+
                     except asyncio.TimeoutError:
                         # No chunk ready, just continue and check done_event again
                         continue
-                
+
                 # Cache the complete audio if enabled
                 if self.caching and full_audio:
                     logger.info(f"Caching audio for text: {text}")
                     self.cache.set(text, bytes(full_audio))
-                
+
                 self.synthesized_characters += len(text)
                 # Compute total stream duration
                 try:
-                    meta_info['synthesizer_total_stream_duration'] = (time.perf_counter() - meta_info.get('synthesizer_start_time', start_time))
+                    meta_info["synthesizer_total_stream_duration"] = time.perf_counter() - meta_info.get(
+                        "synthesizer_start_time", start_time
+                    )
                 except Exception:
                     pass
         except asyncio.CancelledError:

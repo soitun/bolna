@@ -33,13 +33,11 @@ class SynthesizerPool:
         self.synthesizers = synthesizers
 
         if active_label not in self.synthesizers:
-            raise ValueError(
-                f"active_label '{active_label}' not in synthesizers: {list(self.synthesizers.keys())}"
-            )
+            raise ValueError(f"active_label '{active_label}' not in synthesizers: {list(self.synthesizers.keys())}")
         self.active_label = active_label
         self._output_queue = asyncio.Queue()
-        self._gen_task = None          # current _run_generate task
-        self._monitor_tasks = {}       # label -> monitor task
+        self._gen_task = None  # current _run_generate task
+        self._monitor_tasks = {}  # label -> monitor task
 
     # ------------------------------------------------------------------
     # Properties
@@ -144,9 +142,7 @@ class SynthesizerPool:
             return
 
         if label not in self.synthesizers:
-            raise ValueError(
-                f"Unknown synthesizer label '{label}'. Available: {list(self.synthesizers.keys())}"
-            )
+            raise ValueError(f"Unknown synthesizer label '{label}'. Available: {list(self.synthesizers.keys())}")
 
         old = self.active_label
 

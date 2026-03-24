@@ -18,8 +18,18 @@ logger = configure_logger(__name__)
 
 
 class SmallestSynthesizer(BaseSynthesizer):
-    def __init__(self, voice_id, model="lightning", language='en', audio_format="mp3", sampling_rate="8000",
-                 stream=False, buffer_size=400, synthesizer_key=None, **kwargs):
+    def __init__(
+        self,
+        voice_id,
+        model="lightning",
+        language="en",
+        audio_format="mp3",
+        sampling_rate="8000",
+        stream=False,
+        buffer_size=400,
+        synthesizer_key=None,
+        **kwargs,
+    ):
         super().__init__(kwargs.get("task_manager_instance", None), stream)
         self.api_key = os.environ["SMALLEST_API_KEY"] if synthesizer_key is None else synthesizer_key
         self.voice_id = voice_id
@@ -47,10 +57,7 @@ class SmallestSynthesizer(BaseSynthesizer):
         return self.model
 
     async def __send_payload(self, payload):
-        headers = {
-            'Authorization': 'Bearer {}'.format(self.api_key),
-            'Content-Type': 'application/json'
-        }
+        headers = {"Authorization": "Bearer {}".format(self.api_key), "Content-Type": "application/json"}
 
         async with aiohttp.ClientSession() as session:
             if payload is not None:
@@ -72,12 +79,7 @@ class SmallestSynthesizer(BaseSynthesizer):
 
     async def __generate_http(self, text):
         logger.info(f"text {text}")
-        payload = {
-            "text": text,
-            "voice_id": self.voice_id,
-            "sample_rate": self.sampling_rate,
-            "add_wav_header": False
-        }
+        payload = {"text": text, "voice_id": self.voice_id, "sample_rate": self.sampling_rate, "add_wav_header": False}
         response = await self.__send_payload(payload)
         return response
 
@@ -102,11 +104,11 @@ class SmallestSynthesizer(BaseSynthesizer):
                         try:
                             first_result_latency = time.perf_counter() - self.current_turn_start_time
                             # Keep flat field for CSV compatibility
-                            self.meta_info['synthesizer_latency'] = first_result_latency
+                            self.meta_info["synthesizer_latency"] = first_result_latency
                         except Exception:
                             pass
 
-                    self.meta_info['format'] = 'wav'
+                    self.meta_info["format"] = "wav"
                     audio = message
 
                     if not self.first_chunk_generated:
@@ -120,7 +122,7 @@ class SmallestSynthesizer(BaseSynthesizer):
                         self.first_chunk_generated = False
                         self.last_text_sent = True
 
-                    if message == b'\x00':
+                    if message == b"\x00":
                         logger.info("received null byte and hence end of stream")
                         self.meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
@@ -128,12 +130,16 @@ class SmallestSynthesizer(BaseSynthesizer):
                         try:
                             if self.current_turn_start_time is not None:
                                 total_stream_duration = time.perf_counter() - self.current_turn_start_time
-                                self.turn_latencies.append({
-                                    'turn_id': self.current_turn_id,
-                                    'sequence_id': self.current_turn_id,
-                                    'first_result_latency_ms': round((self.meta_info.get('synthesizer_latency', 0)) * 1000),
-                                    'total_stream_duration_ms': round(total_stream_duration * 1000)
-                                })
+                                self.turn_latencies.append(
+                                    {
+                                        "turn_id": self.current_turn_id,
+                                        "sequence_id": self.current_turn_id,
+                                        "first_result_latency_ms": round(
+                                            (self.meta_info.get("synthesizer_latency", 0)) * 1000
+                                        ),
+                                        "total_stream_duration_ms": round(total_stream_duration * 1000),
+                                    }
+                                )
                                 # Reset turn tracking
                                 self.current_turn_start_time = None
                                 self.current_turn_id = None
@@ -150,18 +156,19 @@ class SmallestSynthesizer(BaseSynthesizer):
                     logger.info(f"Generating TTS response for message: {message}")
                     meta_info, text = message.get("meta_info"), message.get("data")
 
-                    if not self.should_synthesize_response(meta_info.get('sequence_id')):
+                    if not self.should_synthesize_response(meta_info.get("sequence_id")):
                         logger.info(
-                            f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager.")
+                            f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager."
+                        )
                         return
 
-                    meta_info['is_cached'] = False
+                    meta_info["is_cached"] = False
                     self.synthesized_characters += len(text)
                     audio = await self.__generate_http(text)
                     if not audio:
-                        audio = b'\x00'
+                        audio = b"\x00"
 
-                    meta_info['text'] = text
+                    meta_info["text"] = text
                     if not self.first_chunk_generated:
                         meta_info["is_first_chunk"] = True
                         self.first_chunk_generated = True
@@ -170,7 +177,7 @@ class SmallestSynthesizer(BaseSynthesizer):
                         meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
 
-                    meta_info['format'] = "wav"
+                    meta_info["format"] = "wav"
                     meta_info["text_synthesized"] = f"{text} "
                     meta_info["mark_id"] = str(uuid.uuid4())
                     yield create_ws_data_packet(audio, meta_info)
@@ -187,11 +194,15 @@ class SmallestSynthesizer(BaseSynthesizer):
 
             if not self.should_synthesize_response(sequence_id):
                 logger.info(
-                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager.")
+                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager."
+                )
                 return
 
             # Ensure the WebSocket connection is established
-            while self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            while (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Waiting for smallest ws connection to be established...")
                 await asyncio.sleep(1)
 
@@ -218,7 +229,7 @@ class SmallestSynthesizer(BaseSynthesizer):
             "voice_id": self.voice_id,
             "text": text,
             "language": self.language,
-            "sample_rate": self.sampling_rate
+            "sample_rate": self.sampling_rate,
         }
 
         return payload
@@ -229,8 +240,10 @@ class SmallestSynthesizer(BaseSynthesizer):
                 if self.conversation_ended:
                     return
 
-                if (self.websocket_holder["websocket"] is None or
-                        self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED):
+                if (
+                    self.websocket_holder["websocket"] is None
+                    or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+                ):
                     if self.connection_error:
                         return
                     logger.info("WebSocket is not connected, skipping receive.")
@@ -240,12 +253,12 @@ class SmallestSynthesizer(BaseSynthesizer):
                 response = await self.websocket_holder["websocket"].recv()
                 data = json.loads(response)
 
-                if "status" in data and data["status"] == 'chunk':
+                if "status" in data and data["status"] == "chunk":
                     chunk = base64.b64decode(data["data"]["audio"])
                     yield chunk
 
-                elif "status" in data and data["status"] == 'complete':
-                    yield b'\x00'
+                elif "status" in data and data["status"] == "complete":
+                    yield b"\x00"
 
             except websockets.exceptions.ConnectionClosed:
                 break
@@ -256,9 +269,7 @@ class SmallestSynthesizer(BaseSynthesizer):
         try:
             start_time = time.perf_counter()
             websocket_url = self.ws_url
-            additional_headers = {
-                'Authorization': 'Token {}'.format(self.api_key)
-            }
+            additional_headers = {"Authorization": "Token {}".format(self.api_key)}
             websocket = await websockets.connect(websocket_url, additional_headers=additional_headers)
             if not self.connection_time:
                 self.connection_time = round((time.perf_counter() - start_time) * 1000)
@@ -275,7 +286,10 @@ class SmallestSynthesizer(BaseSynthesizer):
         max_failures = 3
 
         while consecutive_failures < max_failures:
-            if self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            if (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Re-establishing smallest connection...")
                 result = await self.establish_connection()
                 if result is None:
@@ -303,7 +317,7 @@ class SmallestSynthesizer(BaseSynthesizer):
             # Stamp synthesizer turn start time
             try:
                 self.current_turn_start_time = time.perf_counter()
-                self.current_turn_id = meta_info.get('turn_id') or meta_info.get('sequence_id')
+                self.current_turn_id = meta_info.get("turn_id") or meta_info.get("sequence_id")
             except Exception:
                 pass
             self.sender_task = asyncio.create_task(self.sender(text, meta_info.get("sequence_id"), end_of_llm_stream))

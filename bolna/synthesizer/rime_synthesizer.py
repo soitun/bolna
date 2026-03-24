@@ -22,10 +22,21 @@ load_dotenv()
 
 
 class RimeSynthesizer(BaseSynthesizer):
-    def __init__(self, voice_id, voice, audio_format="wav", sampling_rate="8000", stream=False, buffer_size=400,
-                 caching=True, model="arcana", synthesizer_key=None, **kwargs):
+    def __init__(
+        self,
+        voice_id,
+        voice,
+        audio_format="wav",
+        sampling_rate="8000",
+        stream=False,
+        buffer_size=400,
+        caching=True,
+        model="arcana",
+        synthesizer_key=None,
+        **kwargs,
+    ):
         super().__init__(kwargs.get("task_manager_instance", None), stream, buffer_size)
-        self.format = 'mp3' if model == 'mistv2' and audio_format == 'wav' else audio_format
+        self.format = "mp3" if model == "mistv2" and audio_format == "wav" else audio_format
         self.voice = voice
         self.voice_id = voice_id
         self.buffer_size = buffer_size
@@ -39,7 +50,7 @@ class RimeSynthesizer(BaseSynthesizer):
         self.caching = caching
         self.ws_url = f"wss://users.rime.ai/ws2?speaker={self.voice_id}&modelId={self.model}&audioFormat=mulaw&samplingRate={self.sample_rate}"
         self.api_url = "https://users.rime.ai/v1/rime-tts"
-        if self.model == 'arcana':
+        if self.model == "arcana":
             self.stream = False
 
         self.websocket_holder = {"websocket": None}
@@ -51,7 +62,7 @@ class RimeSynthesizer(BaseSynthesizer):
         self.context_id = None
         self.text_queue = deque()
         self.meta_info = None
-        self.audio_data = b''
+        self.audio_data = b""
 
         if caching:
             self.cache = InmemoryScalarCache()
@@ -75,7 +86,7 @@ class RimeSynthesizer(BaseSynthesizer):
         headers = {
             "Authorization": "Bearer {}".format(self.api_key),
             "Content-Type": "application/json",
-            "Accept": f"audio/{self.format}"
+            "Accept": f"audio/{self.format}",
         }
 
         payload = {
@@ -86,7 +97,7 @@ class RimeSynthesizer(BaseSynthesizer):
             "temperature": 0.5,
             "top_p": 0.5,
             "samplingRate": int(self.sample_rate),
-            "max_tokens": 5000
+            "max_tokens": 5000,
         }
 
         try:
@@ -97,7 +108,7 @@ class RimeSynthesizer(BaseSynthesizer):
                             chunk = await response.read()
                             return chunk
                         else:
-                            return b'\x00'
+                            return b"\x00"
                 else:
                     logger.info("Payload was null")
         except Exception as e:
@@ -105,7 +116,7 @@ class RimeSynthesizer(BaseSynthesizer):
 
     def supports_websocket(self):
         return False
-    
+
     def get_sleep_time(self):
         return 0.01
 
@@ -129,12 +140,16 @@ class RimeSynthesizer(BaseSynthesizer):
 
             if not self.should_synthesize_response(sequence_id):
                 logger.info(
-                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager.")
+                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager."
+                )
                 await self.flush_synthesizer_stream()
                 return
 
             # Ensure the WebSocket connection is established
-            while self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            while (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Waiting for elevenlabs ws connection to be established...")
                 await asyncio.sleep(1)
 
@@ -142,11 +157,14 @@ class RimeSynthesizer(BaseSynthesizer):
                 for text_chunk in self.text_chunker(text):
                     if not self.should_synthesize_response(sequence_id):
                         logger.info(
-                            f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager (inner loop).")
+                            f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager (inner loop)."
+                        )
                         await self.flush_synthesizer_stream()
                         return
                     try:
-                        await self.websocket_holder["websocket"].send(json.dumps({"text": text_chunk, "contextId": self.context_id}))
+                        await self.websocket_holder["websocket"].send(
+                            json.dumps({"text": text_chunk, "contextId": self.context_id})
+                        )
                     except Exception as e:
                         logger.info(f"Error sending chunk: {e}")
                         self.connection_error = str(e)
@@ -175,8 +193,10 @@ class RimeSynthesizer(BaseSynthesizer):
                 if self.conversation_ended:
                     return
 
-                if (self.websocket_holder["websocket"] is None or
-                        self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED):
+                if (
+                    self.websocket_holder["websocket"] is None
+                    or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+                ):
                     if self.connection_error:
                         return
                     logger.info("WebSocket is not connected, skipping receive.")
@@ -186,16 +206,16 @@ class RimeSynthesizer(BaseSynthesizer):
                 response = await self.websocket_holder["websocket"].recv()
                 data = json.loads(response)
 
-                if data.get('type', '') == 'chunk':
+                if data.get("type", "") == "chunk":
                     self.audio_data += base64.b64decode(data["data"])
 
-                if data['type'] == 'timestamps':
+                if data["type"] == "timestamps":
                     yield self.audio_data
-                    self.audio_data = b''
+                    self.audio_data = b""
 
-                chunk_context_id = data.get('contextId', None)
+                chunk_context_id = data.get("contextId", None)
                 if chunk_context_id != self.context_id:
-                    yield b'\x00'
+                    yield b"\x00"
                 else:
                     logger.info("No audio data in the response")
 
@@ -216,18 +236,26 @@ class RimeSynthesizer(BaseSynthesizer):
                         self.meta_info = self.text_queue.popleft()
                         # Compute first-result latency on first audio chunk
                         try:
-                            if self.meta_info and 'synthesizer_start_time' in self.meta_info and 'synthesizer_first_result_latency' not in self.meta_info:
-                                self.meta_info['synthesizer_first_result_latency'] = time.perf_counter() - self.meta_info['synthesizer_start_time']
-                                self.meta_info['synthesizer_latency'] = self.meta_info['synthesizer_first_result_latency']
+                            if (
+                                self.meta_info
+                                and "synthesizer_start_time" in self.meta_info
+                                and "synthesizer_first_result_latency" not in self.meta_info
+                            ):
+                                self.meta_info["synthesizer_first_result_latency"] = (
+                                    time.perf_counter() - self.meta_info["synthesizer_start_time"]
+                                )
+                                self.meta_info["synthesizer_latency"] = self.meta_info[
+                                    "synthesizer_first_result_latency"
+                                ]
                         except Exception:
                             pass
                     audio = ""
 
                     if self.use_mulaw:
-                        self.meta_info['format'] = 'mulaw'
+                        self.meta_info["format"] = "mulaw"
                         audio = message
                     else:
-                        self.meta_info['format'] = "wav"
+                        self.meta_info["format"] = "wav"
                         audio = message
 
                     if not self.first_chunk_generated:
@@ -241,14 +269,16 @@ class RimeSynthesizer(BaseSynthesizer):
                         self.first_chunk_generated = False
                         self.last_text_sent = True
 
-                    if message == b'\x00':
+                    if message == b"\x00":
                         logger.info("received null byte and hence end of stream")
                         self.meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
                         # Compute total stream duration for this synthesizer turn
                         try:
-                            if self.meta_info and 'synthesizer_start_time' in self.meta_info:
-                                self.meta_info['synthesizer_total_stream_duration'] = time.perf_counter() - self.meta_info['synthesizer_start_time']
+                            if self.meta_info and "synthesizer_start_time" in self.meta_info:
+                                self.meta_info["synthesizer_total_stream_duration"] = (
+                                    time.perf_counter() - self.meta_info["synthesizer_start_time"]
+                                )
                         except Exception:
                             pass
 
@@ -261,9 +291,10 @@ class RimeSynthesizer(BaseSynthesizer):
                     message = await self.internal_queue.get()
                     logger.info(f"Generating TTS response for message: {message}")
                     meta_info, text = message.get("meta_info"), message.get("data")
-                    if not self.should_synthesize_response(meta_info.get('sequence_id')):
+                    if not self.should_synthesize_response(meta_info.get("sequence_id")):
                         logger.info(
-                            f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager.")
+                            f"Not synthesizing text as the sequence_id ({meta_info.get('sequence_id')}) of it is not in the list of sequence_ids present in the task manager."
+                        )
                         return
                     if self.caching:
                         logger.info(f"Caching is on")
@@ -290,8 +321,8 @@ class RimeSynthesizer(BaseSynthesizer):
                     if "end_of_llm_stream" in meta_info and meta_info["end_of_llm_stream"]:
                         meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
-                    meta_info['text'] = text
-                    meta_info['format'] = 'wav'
+                    meta_info["text"] = text
+                    meta_info["format"] = "wav"
                     meta_info["text_synthesized"] = f"{text} "
                     meta_info["mark_id"] = str(uuid.uuid4())
                     yield create_ws_data_packet(message, meta_info)
@@ -305,9 +336,7 @@ class RimeSynthesizer(BaseSynthesizer):
         try:
             start_time = time.perf_counter()
             websocket_url = self.ws_url
-            additional_headers = {
-                'Authorization': 'Bearer {}'.format(self.api_key)
-            }
+            additional_headers = {"Authorization": "Bearer {}".format(self.api_key)}
             websocket = await websockets.connect(websocket_url, additional_headers=additional_headers)
             if not self.connection_time:
                 self.connection_time = round((time.perf_counter() - start_time) * 1000)
@@ -324,7 +353,10 @@ class RimeSynthesizer(BaseSynthesizer):
         max_failures = 3
 
         while consecutive_failures < max_failures:
-            if self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            if (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Re-establishing rime connection...")
                 result = await self.establish_connection()
                 if result is None:
@@ -351,7 +383,7 @@ class RimeSynthesizer(BaseSynthesizer):
             meta_info["text"] = text
             # Stamp synthesizer turn start time
             try:
-                meta_info['synthesizer_start_time'] = time.perf_counter()
+                meta_info["synthesizer_start_time"] = time.perf_counter()
             except Exception:
                 pass
             if not self.context_id:

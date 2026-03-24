@@ -14,7 +14,7 @@ class MarkEventMetaData:
         self.mark_changed = asyncio.Event()
 
     def update_data(self, mark_id, value):
-        value['counter'] = self.counter
+        value["counter"] = self.counter
         self.counter += 1
         self.mark_event_meta_data[mark_id] = value
 

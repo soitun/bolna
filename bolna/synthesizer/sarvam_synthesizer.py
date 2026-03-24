@@ -19,7 +19,18 @@ logger = configure_logger(__name__)
 
 
 class SarvamSynthesizer(BaseSynthesizer):
-    def __init__(self, voice_id, model, language, sampling_rate="8000", stream=False, buffer_size=400, speed=1.0, synthesizer_key=None, **kwargs):
+    def __init__(
+        self,
+        voice_id,
+        model,
+        language,
+        sampling_rate="8000",
+        stream=False,
+        buffer_size=400,
+        speed=1.0,
+        synthesizer_key=None,
+        **kwargs,
+    ):
         super().__init__(kwargs.get("task_manager_instance", None), stream)
         self.api_key = os.environ["SARVAM_API_KEY"] if synthesizer_key is None else synthesizer_key
         self.voice_id = voice_id
@@ -30,7 +41,9 @@ class SarvamSynthesizer(BaseSynthesizer):
             self.buffer_size = 200
 
         self.sampling_rate = int(sampling_rate)
-        self.original_sampling_rate = SARVAM_MODEL_SAMPLING_RATE_MAPPING.get(model, None) # Known for some models, inferred from file in other cases
+        self.original_sampling_rate = SARVAM_MODEL_SAMPLING_RATE_MAPPING.get(
+            model, None
+        )  # Known for some models, inferred from file in other cases
         self.api_url = f"https://api.sarvam.ai/text-to-speech"
         self.ws_url = f"wss://api.sarvam.ai/text-to-speech/ws?model={model}"
 
@@ -58,18 +71,15 @@ class SarvamSynthesizer(BaseSynthesizer):
         return self.model
 
     async def __send_payload(self, payload):
-        headers = {
-            'api-subscription-key': self.api_key,
-            'Content-Type': 'application/json'
-        }
+        headers = {"api-subscription-key": self.api_key, "Content-Type": "application/json"}
 
         async with aiohttp.ClientSession() as session:
             if payload is not None:
                 async with session.post(self.api_url, headers=headers, json=payload) as response:
                     if response.status == 200:
                         data = await response.json()
-                        if data and data.get('audios', []) and isinstance(data.get('audios', []), list):
-                            return data.get('audios')[0]
+                        if data and data.get("audios", []) and isinstance(data.get("audios", []), list):
+                            return data.get("audios")[0]
                     else:
                         logger.error(f"Error: {response.status} - {await response.text()}")
             else:
@@ -81,7 +91,7 @@ class SarvamSynthesizer(BaseSynthesizer):
 
     def supports_websocket(self):
         return True
-    
+
     def get_sleep_time(self):
         return 0.01
 
@@ -94,7 +104,7 @@ class SarvamSynthesizer(BaseSynthesizer):
             "loudness": self.loudness,
             "speech_sample_rate": self.sampling_rate,
             "enable_preprocessing": self.enable_preprocessing,
-            "model": self.model
+            "model": self.model,
         }
 
         if self.model == "bulbul:v3":
@@ -111,11 +121,15 @@ class SarvamSynthesizer(BaseSynthesizer):
 
             if not self.should_synthesize_response(sequence_id):
                 logger.info(
-                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager.")
+                    f"Not synthesizing text as the sequence_id ({sequence_id}) of it is not in the list of sequence_ids present in the task manager."
+                )
                 return
 
             # Ensure the WebSocket connection is established
-            while self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            while (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Waiting for sarvam ws connection to be established...")
                 await asyncio.sleep(1)
 
@@ -150,7 +164,7 @@ class SarvamSynthesizer(BaseSynthesizer):
             "loudness": self.loudness,
             "speech_sample_rate": self.sampling_rate,
             "enable_preprocessing": self.enable_preprocessing,
-            "model": self.model
+            "model": self.model,
         }
 
         if self.model == "bulbul:v3":
@@ -165,8 +179,10 @@ class SarvamSynthesizer(BaseSynthesizer):
                 if self.conversation_ended:
                     return
 
-                if (self.websocket_holder["websocket"] is None or
-                        self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED):
+                if (
+                    self.websocket_holder["websocket"] is None
+                    or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+                ):
                     if self.connection_error:
                         return
                     logger.info("WebSocket is not connected, skipping receive.")
@@ -176,12 +192,12 @@ class SarvamSynthesizer(BaseSynthesizer):
                 response = await self.websocket_holder["websocket"].recv()
                 data = json.loads(response)
 
-                if "type" in data and data["type"] == 'audio':
+                if "type" in data and data["type"] == "audio":
                     chunk = base64.b64decode(data["data"]["audio"])
                     yield chunk
 
                 if self.last_text_sent:
-                    yield b'\x00'
+                    yield b"\x00"
 
             except websockets.exceptions.ConnectionClosed:
                 break
@@ -192,11 +208,10 @@ class SarvamSynthesizer(BaseSynthesizer):
         try:
             start_time = time.perf_counter()
             additional_headers = {
-                'api-subscription-key': self.api_key,
+                "api-subscription-key": self.api_key,
             }
             websocket = await asyncio.wait_for(
-                websockets.connect(self.ws_url, additional_headers=additional_headers),
-                timeout=10.0
+                websockets.connect(self.ws_url, additional_headers=additional_headers), timeout=10.0
             )
             bos_message = {
                 "type": "config",
@@ -210,8 +225,8 @@ class SarvamSynthesizer(BaseSynthesizer):
                     "output_audio_codec": "wav",
                     "output_audio_bitrate": "32k",
                     "max_chunk_length": 250,
-                    "min_buffer_size": self.buffer_size
-                }
+                    "min_buffer_size": self.buffer_size,
+                },
             }
             await websocket.send(json.dumps(bos_message))
             if not self.connection_time:
@@ -224,9 +239,9 @@ class SarvamSynthesizer(BaseSynthesizer):
             return None
         except InvalidHandshake as e:
             error_msg = str(e)
-            if '401' in error_msg or '403' in error_msg:
+            if "401" in error_msg or "403" in error_msg:
                 logger.error(f"Sarvam TTS authentication failed: Invalid or expired API key - {e}")
-            elif '404' in error_msg:
+            elif "404" in error_msg:
                 logger.error(f"Sarvam TTS endpoint not found: {e}")
             else:
                 logger.error(f"Sarvam TTS handshake failed: {e}")
@@ -242,7 +257,10 @@ class SarvamSynthesizer(BaseSynthesizer):
         max_failures = 3
 
         while consecutive_failures < max_failures:
-            if self.websocket_holder["websocket"] is None or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED:
+            if (
+                self.websocket_holder["websocket"] is None
+                or self.websocket_holder["websocket"].state is websockets.protocol.State.CLOSED
+            ):
                 logger.info("Re-establishing sarvam connection...")
                 result = await self.establish_connection()
                 if result is None:
@@ -264,15 +282,15 @@ class SarvamSynthesizer(BaseSynthesizer):
         return self.sender_task
 
     async def generate(self):
-        '''
+        """
         Async generator that yields audio chunks as they are received from the WebSocket connection.
 
         Received packets are slightly different for bulbul:v3 vs other models.
         - For older models: Every chunk is a complete audio chunk in the specified format (e.g. wav, pcm etc)
         - For bulbul:v3: The first chunk is a wav header chunk, while subsequent chunks are raw pcm data.
-        
+
         Caution: Sampling rate received from bulbul:v3 differs from the documentation.
-        '''
+        """
         try:
             if self.stream:
                 async for message in self.receiver():
@@ -286,11 +304,11 @@ class SarvamSynthesizer(BaseSynthesizer):
                         try:
                             if self.current_turn_start_time is not None:
                                 first_result_latency = time.perf_counter() - self.current_turn_start_time
-                                self.meta_info['synthesizer_latency'] = first_result_latency
+                                self.meta_info["synthesizer_latency"] = first_result_latency
                         except Exception:
                             pass
 
-                    self.meta_info['format'] = 'wav'
+                    self.meta_info["format"] = "wav"
                     audio = message
 
                     if not self.first_chunk_generated:
@@ -304,7 +322,7 @@ class SarvamSynthesizer(BaseSynthesizer):
                         self.first_chunk_generated = False
                         self.last_text_sent = True
 
-                    if message == b'\x00':
+                    if message == b"\x00":
                         logger.info("received null byte and hence end of stream")
                         self.meta_info["end_of_synthesizer_stream"] = True
                         self.first_chunk_generated = False
@@ -312,12 +330,16 @@ class SarvamSynthesizer(BaseSynthesizer):
                         try:
                             if self.current_turn_start_time is not None:
                                 total_stream_duration = time.perf_counter() - self.current_turn_start_time
-                                self.turn_latencies.append({
-                                    'turn_id': self.current_turn_id,
-                                    'sequence_id': self.current_turn_id,
-                                    'first_result_latency_ms': round((self.meta_info.get('synthesizer_latency', 0)) * 1000),
-                                    'total_stream_duration_ms': round(total_stream_duration * 1000)
-                                })
+                                self.turn_latencies.append(
+                                    {
+                                        "turn_id": self.current_turn_id,
+                                        "sequence_id": self.current_turn_id,
+                                        "first_result_latency_ms": round(
+                                            (self.meta_info.get("synthesizer_latency", 0)) * 1000
+                                        ),
+                                        "total_stream_duration_ms": round(total_stream_duration * 1000),
+                                    }
+                                )
                                 self.current_turn_start_time = None
                                 self.current_turn_id = None
                         except Exception:
@@ -341,20 +363,24 @@ class SarvamSynthesizer(BaseSynthesizer):
         format = get_synth_audio_format(audio)
 
         if format == "wav" and self.model == "bulbul:v3":
-            received_sampling_rate = int.from_bytes(audio[24:28], byteorder='little')
+            received_sampling_rate = int.from_bytes(audio[24:28], byteorder="little")
 
             if self.original_sampling_rate != received_sampling_rate:
-                logger.warning(f"Expected sampling rate {self.original_sampling_rate} does not match received sampling rate {received_sampling_rate} for model {self.model}. Using received sampling rate for resampling.")
+                logger.warning(
+                    f"Expected sampling rate {self.original_sampling_rate} does not match received sampling rate {received_sampling_rate} for model {self.model}. Using received sampling rate for resampling."
+                )
                 self.original_sampling_rate = received_sampling_rate
 
-            return None # This is only the header. Remaining chunks are PCM
-        
+            return None  # This is only the header. Remaining chunks are PCM
+
         try:
-            resampled_audio = resample(audio, int(self.sampling_rate), format=format, original_sample_rate=self.original_sampling_rate)
+            resampled_audio = resample(
+                audio, int(self.sampling_rate), format=format, original_sample_rate=self.original_sampling_rate
+            )
         except Exception as e:
             logger.error(f"Error in resampling audio: {e}")
             return None
-        
+
         if format == "wav":
             audio = wav_bytes_to_pcm(resampled_audio)
         else:
@@ -372,7 +398,7 @@ class SarvamSynthesizer(BaseSynthesizer):
             # Stamp synthesizer turn start time
             try:
                 self.current_turn_start_time = time.perf_counter()
-                self.current_turn_id = meta_info.get('turn_id') or meta_info.get('sequence_id')
+                self.current_turn_id = meta_info.get("turn_id") or meta_info.get("sequence_id")
             except Exception:
                 pass
             self.sender_task = asyncio.create_task(self.sender(text, meta_info.get("sequence_id"), end_of_llm_stream))

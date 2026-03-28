@@ -3,7 +3,7 @@ from typing import Any, Literal, Optional, List, Union, Dict, Callable
 from pydantic import BaseModel, Field, field_validator, ValidationError, Json, model_validator
 from pydantic_core import PydanticCustomError
 from .providers import *
-from .enums import TelephonyProvider, SynthesizerProvider, TranscriberProvider, ReasoningEffort, Verbosity, ExpressionOperator, ExpressionLogic, EdgeConditionType
+from .enums import TelephonyProvider, SynthesizerProvider, TranscriberProvider, ReasoningEffort, Verbosity, ExpressionOperator, ExpressionLogic, EdgeConditionType, NodeType
 from .constants import MODEL_REASONING_EFFORT_MAP
 
 AGENT_WELCOME_MESSAGE = "This call is being recorded for quality assurance and training. Please speak now."
@@ -319,7 +319,10 @@ class GraphNodeRAGConfig(BaseModel):
 class GraphNode(BaseModel):
     id: str
     description: Optional[str] = None
-    prompt: str
+    node_type: NodeType = NodeType.LLM
+    prompt: str = ""
+    static_message: Optional[str] = None
+    repeat_after_silence_seconds: Optional[float] = None
     examples: Optional[Dict[str, str]] = None
     edges: List[GraphEdge] = Field(default_factory=list)
     function_call: Optional[str] = None

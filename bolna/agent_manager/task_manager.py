@@ -367,6 +367,8 @@ class TaskManager(BaseManager):
 
                 self.time_since_last_spoken_human_word = 0
 
+                self.repeat_after_silence_seconds = None
+
                 #Handling accidental interruption
                 self.number_of_words_for_interruption = self.conversation_config.get("number_of_words_for_interruption", 3)
                 self.asked_if_user_is_still_there = False #Used to make sure that if user's phrase qualifies as acciedental interruption, we don't break the conversation loop
@@ -1930,7 +1932,36 @@ class TaskManager(BaseManager):
                         direction=LogDirection.RESPONSE,
                         run_id=self.run_id
                     )
+
+                    is_silence_trigger = routing_info.get('is_silence_trigger', False)
+
+                    current_node = self.tools['llm_agent'].get_node_by_id(routing_info['current_node'])
+                    if current_node:
+                        self.repeat_after_silence_seconds = current_node.get('repeat_after_silence_seconds')
+
                     continue
+
+                if isinstance(llm_message, dict) and 'static_message' in llm_message:
+                    static_text = llm_message['static_message']
+                    static_hash = llm_message['static_audio_hash']
+
+                    if not is_silence_trigger:
+                        self.conversation_history.append_assistant(static_text)
+                        messages.append({'role': 'assistant', 'content': static_text})
+                        self.conversation_history.sync_interim(messages)
+
+                    convert_to_request_log(
+                        message=static_text, meta_info=meta_info,
+                        component=LogComponent.LLM, direction=LogDirection.RESPONSE,
+                        model="static_node", is_cached=True, run_id=self.run_id
+                    )
+
+                    meta_info["end_of_llm_stream"] = True
+                    meta_info["text"] = static_text
+                    meta_info["cached"] = True
+                    ws_packet = create_ws_data_packet(static_hash, meta_info=meta_info, is_md5_hash=True)
+                    await self._synthesize(ws_packet)
+                    return
 
                 data = llm_message.data
                 end_of_llm_stream = llm_message.end_of_stream
@@ -2831,6 +2862,23 @@ class TaskManager(BaseManager):
             traceback.print_exc()
             logger.error(f'Error in processing message output: {str(e)}')
 
+    async def _inject_and_run_llm(self, injected_message: str):
+        self.conversation_history.append_user(injected_message)
+        meta_info = self.__get_updated_meta_info({
+            'io': self.tools["output"].get_provider(),
+            "request_id": str(uuid.uuid4()),
+            "cached": False,
+            'format': self.task_config["tools_config"]["output"].get("format", "pcm"),
+        })
+        bos_packet = create_ws_data_packet("<beginning_of_stream>", meta_info)
+        await self.tools["output"].handle(bos_packet)
+        self.response_in_pipeline = True
+        task = asyncio.create_task(self._run_llm_task(create_ws_data_packet(injected_message, meta_info)))
+        self.llm_task = task
+        await task
+        eos_packet = create_ws_data_packet("<end_of_stream>", meta_info)
+        await self.tools["output"].handle(eos_packet)
+
     async def __check_for_completion(self):
         logger.info(f"Starting task to check for completion")
         while True:
@@ -2870,6 +2918,13 @@ class TaskManager(BaseManager):
 
             time_since_last_spoken_ai_word = (time.time() - self.last_transmitted_timestamp)
             time_since_user_last_spoke = (time.time() - self.time_since_last_spoken_human_word) if self.time_since_last_spoken_human_word > 0 else float('inf')
+
+            if (self.repeat_after_silence_seconds
+                    and time_since_last_spoken_ai_word > self.repeat_after_silence_seconds
+                    and time_since_user_last_spoke > self.repeat_after_silence_seconds
+                    and not self.response_in_pipeline):
+                await self._inject_and_run_llm(f"[silence] User was silent for {self.repeat_after_silence_seconds} seconds")
+                continue
 
             if self.hang_conversation_after > 0 and time_since_last_spoken_ai_word > self.hang_conversation_after and time_since_user_last_spoke > self.hang_conversation_after:
                 logger.info(f"{time_since_last_spoken_ai_word} seconds since AI last spoke and {time_since_user_last_spoke} seconds since user last spoke, both exceed {self.hang_conversation_after}s timeout - hanging up")

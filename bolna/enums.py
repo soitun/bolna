@@ -239,6 +239,11 @@ class EdgeConditionType(str, Enum):
     UNCONDITIONAL = "unconditional"
 
 
+class NodeType(str, Enum):
+    LLM = "llm"
+    STATIC = "static"
+
+
 class UsageSource(str, Enum):
     """Indicates whether token counts came from the API or text estimation."""
     API_REPORTED = "api_reported"

@@ -3196,6 +3196,16 @@ class TaskManager(BaseManager):
                 if hasattr(self, 'transcriber_task') and self.transcriber_task is not None:
                     tasks_to_cancel.append(process_task_cancellation(self.transcriber_task, 'transcriber_task'))
 
+            # LLM cleanup — close httpx connection pools to free native memory
+            llm_agents_to_close = set()
+            if "llm_agent" in self.tools and hasattr(self.tools["llm_agent"], 'llm'):
+                llm_agents_to_close.add(id(self.tools["llm_agent"].llm))
+                tasks_to_cancel.append(self.tools["llm_agent"].llm.close())
+            for _agent in self.llm_agent_map.values():
+                if hasattr(_agent, 'llm') and id(_agent.llm) not in llm_agents_to_close:
+                    llm_agents_to_close.add(id(_agent.llm))
+                    tasks_to_cancel.append(_agent.llm.close())
+
             if self._is_conversation_task():
                 self.transcriber_latencies.connection_latency_ms = self.tools["transcriber"].connection_time
                 self.synthesizer_latencies.connection_latency_ms = self.tools["synthesizer"].connection_time
@@ -3236,6 +3246,7 @@ class TaskManager(BaseManager):
                         "interruption_stats": self.interruption_manager.get_interruption_stats(
                             self.conversation_start_init_ts
                         ),
+                        "mark_tracking": self.mark_event_meta_data.get_mark_tracking_summary(),
                     },
                     "hangup_detail": self.hangup_detail
                 }

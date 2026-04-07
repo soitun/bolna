@@ -16,6 +16,10 @@ class BaseLLM:
         """Generate an LLM response for the given message history."""
         pass
 
+    async def close(self):
+        """Release resources (HTTP pools, sockets, etc.).  No-op by default."""
+        pass
+
     def invalidate_response_chain(self):
         """Reset stateful response chaining (e.g., previous_response_id).
 

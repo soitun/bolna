@@ -275,6 +275,17 @@ class AzureLLM(OpenAICompatibleLLM):
             logger.error(f"Azure OpenAI unexpected error: {e}")
             raise
 
+    async def close(self):
+        try:
+            await self.async_client.close()
+        except Exception:
+            pass
+        if hasattr(self, '_responses_api_client'):
+            try:
+                await self._responses_api_client.close()
+            except Exception:
+                pass
+
     def get_response_format(self, is_json_format: bool):
         if is_json_format and self.model in ('gpt-4-1106-preview', 'gpt-3.5-turbo-1106', 'gpt-4o-mini', 'gpt-4.1-mini'):
             return {"type": "json_object"}
